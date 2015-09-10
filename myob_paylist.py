@@ -21,9 +21,6 @@ def input_format(csv):
 	attr['pay period'] = out[3]
 	attr['gross income'] = round(int(out[1]) / 12, 3)
 	if out[1] > EnumTaxes.btaxe or out[1] <= EnumTaxes.mtaxe:
-	    #tx1 = 3572
-	    #tx2 = 37000
-	    #tx3 = 0.325
             tx1 = EnumTaxes.base_taxes[0]
             tx2 = EnumTaxes.base_taxes[1]
             tx3 = EnumTaxes.base_taxes[2]
