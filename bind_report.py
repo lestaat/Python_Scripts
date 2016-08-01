@@ -251,11 +251,17 @@ def main():
             sparser.getCommands(user,None)
 
     # Groups
+    lst = []
     for entry in getusergrp.consolidateDb:
         for values in entry.itervalues():
             for key, value in values.iteritems():
                 if 'pgroup' in key:
-                    sparser.getCommands("%" + value,None)
+                    #sparser.getCommands("%" + value,None)
+                    lst.append(value)
+                    
+    for entry in set(lst):
+        sparser.getCommands("%" + entry, None)
+
 
 if(__name__ == "__main__"):
     main()
