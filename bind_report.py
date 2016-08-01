@@ -239,7 +239,7 @@ class SudoersParser(object):
 
 def main():
     sparser = SudoersParser()
-    sparser.parseFile('etc/sudoers')
+    sparser.parseFile('../../Python/etc/sudoers')
     #user = 'speroma'
     #sp.getCommands(user,None)
 
