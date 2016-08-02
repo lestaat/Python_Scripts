@@ -9,8 +9,9 @@ __author__ = 'speroma'
 """
 
 class UsersGroupsDb(object):
-    def __init__(self):
+    def __init__(self, text=None):
         self.consolidateDb = self.getsettings()
+        self.consolidateOuput = self.addsudo(text)
 
     def getsettings(self):
         users = []
@@ -23,6 +24,9 @@ class UsersGroupsDb(object):
             users.append({username:{'uid': userid, 'pgroup': groupname, 'sgroup': groupsec}})
 
         return users
+
+    def addsudo(self, text):
+        print "test"
 
 class SudoCmndAlias(object):
     def __init__(self,runas,passwd,command,sp):
@@ -240,27 +244,24 @@ class SudoersParser(object):
 def main():
     sparser = SudoersParser()
     sparser.parseFile('../../Python/etc/sudoers')
-    #user = 'speroma'
-    #sp.getCommands(user,None)
 
     getusergrp = UsersGroupsDb()
-    
-    # Users
-    for entry in getusergrp.consolidateDb:
-        for user in entry.iterkeys():
-            sparser.getCommands(user,None)
 
-    # Groups
+    # Sudoers
     lst = []
     for entry in getusergrp.consolidateDb:
-        for values in entry.itervalues():
+        for user, values in entry.iteritems():
+            sparser.getCommands(user, None)
             for key, value in values.iteritems():
                 if 'pgroup' in key:
-                    #sparser.getCommands("%" + value,None)
                     lst.append(value)
-                    
+
     for entry in set(lst):
         sparser.getCommands("%" + entry, None)
+
+    #Users - Groups
+    for entry in getusergrp.consolidateDb:
+        print entry
 
 
 if(__name__ == "__main__"):
