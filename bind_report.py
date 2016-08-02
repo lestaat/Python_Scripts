@@ -9,9 +9,8 @@ __author__ = 'speroma'
 """
 
 class UsersGroupsDb(object):
-    def __init__(self, text=None):
+    def __init__(self):
         self.consolidateDb = self.getsettings()
-        self.consolidateOuput = self.addsudo(text)
 
     def getsettings(self):
         users = []
@@ -25,8 +24,6 @@ class UsersGroupsDb(object):
 
         return users
 
-    def addsudo(self, text):
-        print "test"
 
 class SudoCmndAlias(object):
     def __init__(self,runas,passwd,command,sp):
@@ -114,32 +111,17 @@ class SudoersParser(object):
             if(rule):
                 self.rules.append(rule)
 
-    def getCommands(self,user,host="localhost"):
-        if (host=="localhost" or host==None):
-            host=socket.gethostname()
+    def getCommands(self,user,json_str):
 
-        print "\nTesting what %s can run on %s\n" % (user,host)
+        host=socket.gethostname()
+
         match = False
         for rule in self.rules:
             if (rule.matchUser(user) and rule.matchHost(host)):
                 match = True
                 for cmnd in rule.command:
-                    print cmnd
-        if (not match):
-            print "No matches - check spelling\n"
+                    print "%s: {%s: %s , sudoers: {%s}}" % (host, user, json_str, cmnd)
 
-    def canRunCommand(self,user,command,host="localhost"):
-        if (host=="localhost" or host==None):
-            host=socket.gethostname()
-        for rule in self.rules:
-            if (rule.matchUser(user) and rule.matchHost(host)):
-                for cmnd in rule.command:
-                    if (cmnd.matchCommand(command)):
-                        print "User %s can run command %s" % (user,command)
-                        return True
-        print "User %s can not run command %s" % (user,command)
-        return False
-            
     def matchUserAlias(self,userAlias, user):
         for entry in userAlias:
             if (entry == user):
@@ -251,17 +233,23 @@ def main():
     lst = []
     for entry in getusergrp.consolidateDb:
         for user, values in entry.iteritems():
-            sparser.getCommands(user, None)
+            sparser.getCommands(user, values)
             for key, value in values.iteritems():
-                if 'pgroup' in key:
-                    lst.append(value)
+                if 'pgroup' in key or 'sgroup' in key:
+                    if isinstance(value, list):
+                        for group in value:
+                            if group not in lst:
+                                lst.append(group)
+                                sparser.getCommands("%" + group, values)
+                    else:
+                        if value not in lst:
+                            lst.append(value)
+                            sparser.getCommands("%" + value, values)
 
-    for entry in set(lst):
-        sparser.getCommands("%" + entry, None)
 
     #Users - Groups
-    for entry in getusergrp.consolidateDb:
-        print entry
+    #for entry in getusergrp.consolidateDb:
+    #    print entry
 
 
 if(__name__ == "__main__"):
