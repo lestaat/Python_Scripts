@@ -19,7 +19,7 @@ class UsersGroupsDb(object):
             userid = pwd.getpwnam(username)[2]
             groupid = pwd.getpwnam(user[0])[3]
             groupname = grp.getgrgid(groupid)[0]
-            groupsec = grp.getgrgid(groupid)[3]
+            #groupsec = grp.getgrgid(groupid)[3]
 
             sgroupvld = []
             for sgroup in grp.getgrall():
@@ -258,6 +258,7 @@ class FormatOutput(object):
         getusergrp = UsersGroupsDb()
 
         lst = []
+        lst2 = []
         rlist = []
         for entry in getusergrp.consolidateDb:
             l1 = []
@@ -269,29 +270,29 @@ class FormatOutput(object):
                     print l1
                     csv_wr(l1, self.workdir, 'sudoers')
                 for key, value in values.iteritems():
+                    l2 = []
                     if "pgroup" in key or "sgroup" in key:
                         if isinstance(value, list):
                             for group in value:
                                 if group not in lst:
                                     lst.append(group)
-                                    lst.append('matias')
                                     r = sparser.getCommands("%" + group, self.host, None)
                                     if r:
                                         rlist.append(r)
                                         #csv_wr(rt, self.workdir, 'sudoers')
-                                        l1.append(r[0]["group"])
-                                        l1.append(r[0]["cmnd"])
+                                        l2.append(r[0]["group"])
+                                        l2.append(r[0]["cmnd"])
                                         csv_wr(l1, self.workdir, 'sudoers')
-                                        print l1
+                                        print l2
                         else:
-                            if value not in lst:
-                                lst.append(value)
+                            if value not in lst2:
+                                lst2.append(value)
                                 r = sparser.getCommands("%" + value, self.host, None)
                                 if r:
                                     rlist.append(r)
-                                    l1.append(r[0]["group"])
-                                    l1.append(r[0]["cmnd"])
-                                    print l1
+                                    l2.append(r[0]["group"])
+                                    l2.append(r[0]["cmnd"])
+                                    print l2
                                     csv_wr(l1, self.workdir, 'sudoers')
         return rlist
 
@@ -309,8 +310,8 @@ class FormatOutput(object):
                 rlist.append(lst)
                 csv_wr(lst, self.workdir, 'passwd')
 
-        for entry in getusergrp.consolidateDb:
-            print entry
+        #for entry in getusergrp.consolidateDb:
+        #    print entry
 
 def csv_wr(feeder, workdir, type='passwd'):
     os.chdir(workdir)
