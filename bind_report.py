@@ -1,5 +1,5 @@
-import json
-import re, grp, pwd, socket
+import json, csv, datetime, argparse, logging
+import sys, os, re, grp, pwd, socket
 
 __author__ = 'speroma'
 
@@ -20,10 +20,17 @@ class UsersGroupsDb(object):
             groupid = pwd.getpwnam(user[0])[3]
             groupname = grp.getgrgid(groupid)[0]
             groupsec = grp.getgrgid(groupid)[3]
-            users.append({username:{'uid': userid, 'pgroup': groupname, 'sgroup': groupsec}})
+
+            sgroupvld = []
+            for sgroup in grp.getgrall():
+                if username in sgroup[3]:
+                    sgroupvld.append(sgroup[0])
+
+            #print "USER: %s : %s" % (sgroupvld, user[0])
+            #users.append({username:{'uid': userid, 'pgroup': groupname, 'sgroup': groupsec}})
+            users.append({username: {'uid': userid, 'pgroup': groupname, 'sgroup': sgroupvld}})
 
         return users
-
 
 class SudoCmndAlias(object):
     def __init__(self,runas,passwd,command,sp):
@@ -39,11 +46,13 @@ class SudoCmndAlias(object):
                 commands = self.sp.cmndAliases[cmndAlias]
                 
         if (self.passwd):
-            str = "(%s) %s\n" % (self.runas, self.command)
+            #str = "(%s) %s\n" % (self.runas, self.command)
+            str = "(%s) %s" % (self.runas, self.command)
         else:
             str = "(%s) NOPASSWD: %s" % (self.runas, self.command)
         for command in commands:
-            str += "\t%s\n" % command
+            #str += "\t%s\n" % command
+            str += "\t%s" % command
         return str
 
     def matchCommand(self,command):
@@ -82,45 +91,55 @@ class SudoRuleChecker(object):
 
 
 class SudoersParser(object):
-    def parseFile(self,file):
+    def parseFile(self, file, log):
         self.hostAliases  = {}
         self.userAliases  = {}
         self.cmndAliases  = {}
         self.rules        = []
-    
-        fh = open(file,"r")
-        lines = fh.readlines()
-        lines = self._collapseLines(lines)
 
-        hostAliasRE = re.compile("^\s*Host_Alias")
-        userAliasRE = re.compile("^\s*User_Alias")
-        cmndAliasRE = re.compile("^\s*Cmnd_Alias")
+        try:
+            with open(file) as f:
+                lines = f.readlines()
+                lines = self._collapseLines(lines)
 
-        for line in lines:
-            if (hostAliasRE.search(line)):
-                self.hostAliases.update(self._parseAlias(line,"Host_Alias"))
-                continue
-            if (userAliasRE.search(line)):
-                self.userAliases.update(self._parseAlias(line,"User_Alias"))
-                continue
-            if (cmndAliasRE.search(line)):
-                self.cmndAliases.update(self._parseAlias(line,"Cmnd_Alias"))
-                continue
+                hostAliasRE = re.compile("^\s*Host_Alias")
+                userAliasRE = re.compile("^\s*User_Alias")
+                cmndAliasRE = re.compile("^\s*Cmnd_Alias")
 
-            rule = self._parseRule(line)
-            if(rule):
-                self.rules.append(rule)
+                for line in lines:
+                    if (hostAliasRE.search(line)):
+                        self.hostAliases.update(self._parseAlias(line,"Host_Alias"))
+                        continue
+                    if (userAliasRE.search(line)):
+                        self.userAliases.update(self._parseAlias(line,"User_Alias"))
+                        continue
+                    if (cmndAliasRE.search(line)):
+                        self.cmndAliases.update(self._parseAlias(line,"Cmnd_Alias"))
+                        continue
 
-    def getCommands(self,user,json_str):
+                    rule = self._parseRule(line)
+                    if(rule):
+                        self.rules.append(rule)
 
-        host=socket.gethostname()
+        except IOError as e:
+            log.error("FAILED TO OPEN FILE:  %s ERROR: %s", file, e)
+
+    def getCommands(self, user, host, type):
 
         match = False
+        ret = []
         for rule in self.rules:
             if (rule.matchUser(user) and rule.matchHost(host)):
                 match = True
                 for cmnd in rule.command:
-                    print "%s: {%s: %s , sudoers: {%s}}" % (host, user, json_str, cmnd)
+                    attr = {}
+                    if type == "user":
+                        attr['user'] = user
+                    else:
+                        attr['group'] = user
+                    attr['cmnd'] = cmnd
+                    ret.append(attr)
+        return ret
 
     def matchUserAlias(self,userAlias, user):
         for entry in userAlias:
@@ -162,7 +181,7 @@ class SudoersParser(object):
             (gr_name, gr_passwd, gr_gid, gr_mem) = grp.getgrnam(group)
         except KeyError:
             return False
-        if(user in gr_mem):
+        if (user in gr_mem):
             return True
     
     def _parseAlias(self,line,marker):
@@ -223,34 +242,127 @@ class SudoersParser(object):
 
         return response
 
+class FormatOutput(object):
+    def __init__(self, host_data, sudoers, logger, workdir):
+        self.host = host_data
+        self.sudoers = sudoers
+        self.log = logger
+        self.workdir = workdir
+        self.FormatSudoers = self.Sudoersvalidation()
+        self.FormatUserGroup = self.Userdbout()
+
+    def Sudoersvalidation(self):
+        sparser = SudoersParser()
+        sparser.parseFile(self.sudoers, self.log)
+
+        getusergrp = UsersGroupsDb()
+
+        lst = []
+        rlist = []
+        for entry in getusergrp.consolidateDb:
+            l1 = []
+            for user, values in entry.iteritems():
+                r = sparser.getCommands(user, self.host, type='user')
+                if r:
+                    l1.append(r[0]["user"])
+                    l1.append(r[0]["cmnd"])
+                    print l1
+                    csv_wr(l1, self.workdir, 'sudoers')
+                for key, value in values.iteritems():
+                    if "pgroup" in key or "sgroup" in key:
+                        if isinstance(value, list):
+                            for group in value:
+                                if group not in lst:
+                                    lst.append(group)
+                                    lst.append('matias')
+                                    r = sparser.getCommands("%" + group, self.host, None)
+                                    if r:
+                                        rlist.append(r)
+                                        #csv_wr(rt, self.workdir, 'sudoers')
+                                        l1.append(r[0]["group"])
+                                        l1.append(r[0]["cmnd"])
+                                        csv_wr(l1, self.workdir, 'sudoers')
+                                        print l1
+                        else:
+                            if value not in lst:
+                                lst.append(value)
+                                r = sparser.getCommands("%" + value, self.host, None)
+                                if r:
+                                    rlist.append(r)
+                                    l1.append(r[0]["group"])
+                                    l1.append(r[0]["cmnd"])
+                                    print l1
+                                    csv_wr(l1, self.workdir, 'sudoers')
+        return rlist
+
+
+    def Userdbout(self):
+        getusergrp = UsersGroupsDb()
+
+        rlist = []
+        for entry in getusergrp.consolidateDb:
+            for user in entry.iterkeys():
+                lst = []
+                lst.append(user)
+                lst.append(entry[user]["pgroup"])
+                lst.append(entry[user]["sgroup"])
+                rlist.append(lst)
+                csv_wr(lst, self.workdir, 'passwd')
+
+        for entry in getusergrp.consolidateDb:
+            print entry
+
+def csv_wr(feeder, workdir, type='passwd'):
+    os.chdir(workdir)
+    mode = 'a'
+    output = "output." + type + "." + str(datetime.date.today()) + ".csv"
+    wr = csv.writer(open(output, mode), quoting=csv.QUOTE_ALL)
+    wr.writerow(feeder)
+
+def setup_logger(logger_name, log_file, level):
+    logger = logging.getLogger(logger_name)
+    formatter = logging.Formatter('%(levelname)s %(asctime)s :: %(message)s')
+    fileHandler = logging.FileHandler(log_file, mode='a')
+    fileHandler.setFormatter(formatter)
+    streamHandler = logging.StreamHandler()
+    streamHandler.setFormatter(formatter)
+
+    level = logging.ERROR
+
+    logger.setLevel(level)
+    logger.addHandler(fileHandler)
+    logger.addHandler(streamHandler)
+
+def usage():
+    print "Usage:"
+    print ('%s -w <workdir> -s <sudoers file>' % sys.argv[0])
+    print "Example:"
+    print ('%s -w . -s /etc/sudoers' % sys.argv[0])
+    sys.exit(2)
+
 def main():
-    sparser = SudoersParser()
-    sparser.parseFile('../../Python/etc/sudoers')
+    host = socket.gethostname()
 
-    getusergrp = UsersGroupsDb()
+    parser = argparse.ArgumentParser(description='BIND Servers user privileges')
+    parser.add_argument('--workdir', '-w', action="store", dest="workdir", help="Working directory")
+    parser.add_argument('--sudoers', '-s', action="store", dest="sudoers", help="Sudoers file location")
+    args = parser.parse_args()
 
-    # Sudoers
-    lst = []
-    for entry in getusergrp.consolidateDb:
-        for user, values in entry.iteritems():
-            sparser.getCommands(user, values)
-            for key, value in values.iteritems():
-                if 'pgroup' in key or 'sgroup' in key:
-                    if isinstance(value, list):
-                        for group in value:
-                            if group not in lst:
-                                lst.append(group)
-                                sparser.getCommands("%" + group, values)
-                    else:
-                        if value not in lst:
-                            lst.append(value)
-                            sparser.getCommands("%" + value, values)
+    if args.workdir and args.sudoers:
+        workdir = args.workdir
+        sudoers = args.sudoers
 
+        setup_logger('error', args.workdir + '/bind_report.log', 'error')
+        logger = logging.getLogger('error')
 
-    #Users - Groups
-    #for entry in getusergrp.consolidateDb:
-    #    print entry
+        #result = FormatOutput(host, sudoers, logger, workdir)
+        FormatOutput(host, sudoers, logger, workdir)
+        #csv_wr(result.FormatUserGroup, workdir, 'passwd')
+        #print result.FormatUserGroup
+        #csv_wr(result.FormatSudoers, workdir, 'sudoers')
 
+    else:
+        usage()
 
 if(__name__ == "__main__"):
     main()
