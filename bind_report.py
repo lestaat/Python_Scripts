@@ -1,4 +1,4 @@
-import json, csv, datetime, argparse, logging
+import csv, datetime, argparse, logging
 import sys, os, re, grp, pwd, socket
 
 __author__ = 'speroma'
@@ -19,15 +19,12 @@ class UsersGroupsDb(object):
             userid = pwd.getpwnam(username)[2]
             groupid = pwd.getpwnam(user[0])[3]
             groupname = grp.getgrgid(groupid)[0]
-            #groupsec = grp.getgrgid(groupid)[3]
 
             sgroupvld = []
             for sgroup in grp.getgrall():
                 if username in sgroup[3]:
                     sgroupvld.append(sgroup[0])
 
-            #print "USER: %s : %s" % (sgroupvld, user[0])
-            #users.append({username:{'uid': userid, 'pgroup': groupname, 'sgroup': groupsec}})
             users.append({username: {'uid': userid, 'pgroup': groupname, 'sgroup': sgroupvld}})
 
         return users
@@ -46,12 +43,10 @@ class SudoCmndAlias(object):
                 commands = self.sp.cmndAliases[cmndAlias]
                 
         if (self.passwd):
-            #str = "(%s) %s\n" % (self.runas, self.command)
             str = "(%s) %s" % (self.runas, self.command)
         else:
             str = "(%s) NOPASSWD: %s" % (self.runas, self.command)
         for command in commands:
-            #str += "\t%s\n" % command
             str += "\t%s" % command
         return str
 
@@ -257,45 +252,25 @@ class FormatOutput(object):
 
         getusergrp = UsersGroupsDb()
 
-        lst = []
-        lst2 = []
-        rlist = []
         for entry in getusergrp.consolidateDb:
             l1 = []
             for user, values in entry.iteritems():
                 r = sparser.getCommands(user, self.host, type='user')
                 if r:
-                    l1.append(r[0]["user"])
-                    l1.append(r[0]["cmnd"])
-                    print l1
-                    csv_wr(l1, self.workdir, 'sudoers')
+                    for r1 in r:
+                        l1.append(r1["user"])
+                        l1.append(r1["cmnd"])
+                    csv_wr(l1, self.workdir, 'sudoers_users')
                 for key, value in values.iteritems():
                     l2 = []
-                    if "pgroup" in key or "sgroup" in key:
-                        if isinstance(value, list):
-                            for group in value:
-                                if group not in lst:
-                                    lst.append(group)
-                                    r = sparser.getCommands("%" + group, self.host, None)
-                                    if r:
-                                        rlist.append(r)
-                                        #csv_wr(rt, self.workdir, 'sudoers')
-                                        l2.append(r[0]["group"])
-                                        l2.append(r[0]["cmnd"])
-                                        csv_wr(l1, self.workdir, 'sudoers')
-                                        print l2
-                        else:
-                            if value not in lst2:
-                                lst2.append(value)
-                                r = sparser.getCommands("%" + value, self.host, None)
-                                if r:
-                                    rlist.append(r)
-                                    l2.append(r[0]["group"])
-                                    l2.append(r[0]["cmnd"])
-                                    print l2
-                                    csv_wr(l1, self.workdir, 'sudoers')
-        return rlist
-
+                    if "pgroup" in key:
+                        r = sparser.getCommands("%" + value, self.host, None)
+                        if r:
+                            for r1 in r:
+                                l2.append(user)
+                                l2.append(r1["group"])
+                                l2.append(r1["cmnd"])
+                            csv_wr(l2, self.workdir, 'sudoers_groups')
 
     def Userdbout(self):
         getusergrp = UsersGroupsDb()
@@ -310,8 +285,6 @@ class FormatOutput(object):
                 rlist.append(lst)
                 csv_wr(lst, self.workdir, 'passwd')
 
-        #for entry in getusergrp.consolidateDb:
-        #    print entry
 
 def csv_wr(feeder, workdir, type='passwd'):
     os.chdir(workdir)
@@ -356,11 +329,8 @@ def main():
         setup_logger('error', args.workdir + '/bind_report.log', 'error')
         logger = logging.getLogger('error')
 
-        #result = FormatOutput(host, sudoers, logger, workdir)
+        # Call Parser
         FormatOutput(host, sudoers, logger, workdir)
-        #csv_wr(result.FormatUserGroup, workdir, 'passwd')
-        #print result.FormatUserGroup
-        #csv_wr(result.FormatSudoers, workdir, 'sudoers')
 
     else:
         usage()
